@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Sudarshan Parthasarathy
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "epf-reader"
+version = "1.0.0"
+description = "Extract transactions from an EPFO member passbook PDF into CSV"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Sudarshan Parthasarathy" }]
+keywords = ["epf", "epfo", "provident-fund", "pdf", "india", "passbook", "ocr"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Text Processing :: Markup",
+]
+
+# Reading a PDF with a text layer needs only these. The OCR stack
+# (opencv/Pillow/pytesseract/pdf2image, ~100MB) is the [ocr] extra, because
+# most passbooks never touch it.
+dependencies = [
+    "pdfplumber>=0.10",
+    "PyPDF2>=3.0",
+    "pandas>=1.5",
+    "python-dateutil>=2.8",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Scanned, image-only passbooks. Also needs the Tesseract and Poppler binaries,
+# which pip cannot install — run `epf-doctor` to check.
+ocr = [
+    "pytesseract>=0.3.10",
+    "pdf2image>=1.16",
+    "opencv-python-headless>=4.8",
+    "Pillow>=10.1",
+    "numpy>=1.23",
+]
+# The `epf-ui` Streamlit page.
+ui = ["streamlit>=1.35"]
+# `--excel` output.
+excel = ["openpyxl>=3.1"]
+# Alternative table backends. tabula needs a Java runtime, camelot needs
+# Ghostscript. Note camelot-py[cv] pulls in opencv-python, which conflicts with
+# the opencv-python-headless in [ocr] — install one or the other.
+backends = ["tabula-py>=2.9", "camelot-py[cv]>=0.11"]
+all = ["epf-reader[ocr,ui,excel]"]
+
+[project.urls]
+Homepage = "https://github.com/spartha08/epf-reader"
+Repository = "https://github.com/spartha08/epf-reader"
+Issues = "https://github.com/spartha08/epf-reader/issues"
+
+[project.scripts]
+epf-extract = "epf_reader.cli:main"
+epf-inspect = "epf_reader.inspect_pdf:main"
+epf-doctor = "epf_reader.doctor:main"
+epf-ui = "epf_reader.ui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+epf_reader = ["config/*.yaml"]

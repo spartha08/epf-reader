@@ -1,0 +1,88 @@
+# Regex patterns for EPF passbook extraction
+
+transaction_patterns:
+  # Monthly contributions
+  contribution: "CONT(RIBUTION)?\\s+(FOR|OF)\\s+(JAN(UARY)?|FEB(RUARY)?|MAR(CH)?|APR(IL)?|MAY|JUN(E)?|JUL(Y)?|AUG(UST)?|SEP(TEMBER)?|OCT(OBER)?|NOV(EMBER)?|DEC(EMBER)?)\\s+\\d{4}"
+  
+  # Annual interest
+  interest: "INT(EREST)?\\s+(FOR|OF)?\\s+FY\\s+\\d{4}-?\\d{2,4}"
+  
+  # Inoperative account interest
+  inoperative_interest: "INOPERATIVE\\s+INT(EREST)?\\s+(FOR|OF)?\\s+FY\\s+\\d{4}-?\\d{2,4}"
+  
+  # TDS deduction
+  tds: "TDS\\s+U/?S\\s+\\d+"
+  
+  # Withdrawals
+  withdrawal: "(ADVANCE\\s+)?WITHDRAWAL"
+  final_settlement: "FINAL\\s+SETTLEMENT"
+  
+  # Transfers
+  transfer_in: "TRANSFER\\s+FROM\\s+PF\\s+A/?C\\s+[A-Z]{2}/[A-Z]{3}/\\d+"
+  transfer_out: "TRANSFER\\s+TO\\s+PF\\s+A/?C\\s+[A-Z]{2}/[A-Z]{3}/\\d+"
+  
+  # Balance entries
+  opening_balance: "OPENING\\s+BALANCE"
+  closing_balance: "CLOSING\\s+BALANCE"
+  
+  # Other
+  edli_charges: "EDLI\\s+(CHARGES|ADMIN\\s+CHARGES)"
+  pension_refund: "PENSION\\s+REFUND"
+
+# Amount patterns (Indian format with lakhs separator)
+amount_pattern: "[-]?\\d{1,3}(,\\d{2,3})*\\.\\d{2}"
+
+# Date patterns (multiple formats)
+date_patterns:
+  - "%d/%m/%Y"         # 15/06/2024
+  - "%d-%m-%Y"         # 15-06-2024
+  - "%B %Y"            # April 2024
+  - "%b %Y"            # Apr 2024
+  - "%d/%m/%y"         # 15/06/24
+  - "%d-%m-%y"         # 15-06-24
+
+# Period extraction patterns
+period_patterns:
+  month_year: "(JAN(UARY)?|FEB(RUARY)?|MAR(CH)?|APR(IL)?|MAY|JUN(E)?|JUL(Y)?|AUG(UST)?|SEP(TEMBER)?|OCT(OBER)?|NOV(EMBER)?|DEC(EMBER)?)\\s+\\d{4}"
+  fy_year: "FY\\s+\\d{4}-?\\d{2,4}"
+
+# Header field patterns
+header_patterns:
+  uan: "UAN\\s*:?\\s*(\\d{12})"
+  pf_account: "PF\\s+ACCOUNT\\s+NUMBER\\s*:?\\s*([A-Z]{2}/[A-Z]{3}/\\d+/\\d+/\\d+)"
+  member_name: "MEMBER\\s+NAME\\s*:?\\s*([A-Z\\s]+)"
+  dob: "DATE\\s+OF\\s+BIRTH\\s*:?\\s*(\\d{2}[/-]\\d{2}[/-]\\d{4})"
+  doj_epf: "DATE\\s+OF\\s+JOINING\\s+EPF\\s*:?\\s*(\\d{2}[/-]\\d{2}[/-]\\d{4})"
+  establishment_name: "ESTABLISHMENT\\s+NAME\\s*:?\\s*([A-Z0-9\\s&.,-]+)"
+  establishment_id: "ESTABLISHMENT\\s+ID\\s*:?\\s*([A-Z]{2}/[A-Z]{3}/\\d+)"
+
+# Table column detection patterns
+table_columns:
+  date_col: "(DATE|PERIOD)"
+  particulars_col: "(PARTICULARS|DESCRIPTION|DETAILS)"
+  employee_col: "(EMPLOYEE|EE)\\s+(SHARE|CONTRIBUTION)"
+  employer_col: "(EMPLOYER|ER)\\s+(SHARE|CONTRIBUTION)"
+  pension_col: "(PENSION|EPS)\\s+(CONTRIBUTION|SHARE)"
+  total_col: "(TOTAL|BALANCE|AMOUNT)"
+
+# OCR preprocessing config
+ocr_config:
+  dpi: 300
+  contrast_enhancement: true
+  deskew: true
+  remove_watermark: true
+  binarization_threshold: 150
+
+# Validation thresholds
+validation:
+  balance_tolerance: 0.01        # ₹0.01 tolerance for balance validation
+  min_transaction_amount: 0.0     # Minimum transaction amount
+  max_transaction_amount: 10000000.0  # ₹1 crore max
+  date_order_check: true          # Verify chronological order
+  
+# Table detection regions (as fraction of page)
+table_region:
+  top: 0.15      # Skip header (15% from top)
+  bottom: 0.95   # Skip footer (5% from bottom)
+  left: 0.05
+  right: 0.95

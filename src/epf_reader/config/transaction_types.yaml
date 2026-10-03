@@ -1,0 +1,161 @@
+# Transaction type mappings for EPF passbook
+
+transaction_types:
+  OPENING:
+    keywords:
+      - "opening balance"
+      - "opening bal"
+      - "o/b"
+    category: "balance"
+    description: "Opening balance at start of period"
+    
+  CLOSING:
+    keywords:
+      - "closing balance"
+      - "closing bal"
+      - "c/b"
+    category: "balance"
+    description: "Closing balance at end of period"
+    
+  CONTRIBUTION:
+    keywords:
+      - "cont for"
+      - "contribution for"
+      - "contr for"
+      - "monthly contribution"
+    category: "credit"
+    description: "Monthly employee and employer contributions"
+    
+  INTEREST:
+    keywords:
+      - "int for fy"
+      - "interest for fy"
+      - "annual interest"
+    category: "credit"
+    description: "Annual interest credited to EPF account"
+    
+  INOPERATIVE_INTEREST:
+    keywords:
+      - "inoperative int"
+      - "inoperative interest"
+    category: "credit"
+    description: "Interest on inactive/inoperative account (reduced rate)"
+    
+  TDS:
+    keywords:
+      - "tds u/s"
+      - "tds us"
+      - "tax deduction"
+    category: "debit"
+    description: "Tax Deducted at Source on withdrawals"
+    
+  WITHDRAWAL:
+    keywords:
+      - "advance withdrawal"
+      - "partial withdrawal"
+      - "withdrawal"
+    category: "debit"
+    description: "Partial withdrawal from EPF account"
+    
+  FINAL_SETTLEMENT:
+    keywords:
+      - "final settlement"
+      - "full settlement"
+      - "closure"
+    category: "debit"
+    description: "Final settlement and account closure"
+    
+  TRANSFER_IN:
+    keywords:
+      - "transfer from"
+      - "transfer in"
+      - "received from"
+    category: "credit"
+    description: "Transfer received from previous employer"
+    
+  TRANSFER_OUT:
+    keywords:
+      - "transfer to"
+      - "transfer out"
+      - "transferred to"
+    category: "debit"
+    description: "Transfer to new employer"
+    
+  EDLI_CHARGES:
+    keywords:
+      - "edli charges"
+      - "edli admin"
+      - "insurance premium"
+    category: "debit"
+    description: "EDLI (Employee Deposit Linked Insurance) charges"
+    
+  PENSION_REFUND:
+    keywords:
+      - "pension refund"
+      - "eps refund"
+      - "pension withdrawal"
+    category: "credit"
+    description: "Refund of pension contribution (pre-2014 withdrawals)"
+
+# Month name mappings (short to full)
+months:
+  JAN: "January"
+  FEB: "February"
+  MAR: "March"
+  APR: "April"
+  MAY: "May"
+  JUN: "June"
+  JUL: "July"
+  AUG: "August"
+  SEP: "September"
+  OCT: "October"
+  NOV: "November"
+  DEC: "December"
+
+# Account type categories
+account_categories:
+  employee:
+    name: "Employee Share"
+    description: "Employee's 12% contribution (of basic + DA)"
+    
+  employer:
+    name: "Employer Share"
+    description: "Employer's 3.67% EPF contribution (12% - 8.33% EPS)"
+    
+  pension:
+    name: "Pension Contribution"
+    description: "Employer's 8.33% EPS contribution (max ₹1,250/month)"
+
+# Validation rules per transaction type
+validation_rules:
+  CONTRIBUTION:
+    requires:
+      - employee_amount
+      - employer_amount
+      - pension_amount
+    validates:
+      - all_positive
+      - employee_ge_employer  # Employee >= Employer typically
+      
+  INTEREST:
+    requires:
+      - employee_amount
+      - employer_amount
+      - pension_amount
+    validates:
+      - all_positive
+      - reasonable_rate  # Check if ~8-9% annual rate
+      
+  WITHDRAWAL:
+    requires:
+      - employee_amount
+    validates:
+      - amount_negative  # Should be negative (debit)
+      - employer_zero    # Typically only from employee share
+      
+  TRANSFER_IN:
+    requires:
+      - employee_amount
+    validates:
+      - all_positive
+      - total_matches    # Total = sum of components

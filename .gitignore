@@ -1,0 +1,22 @@
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# extraction output — contains personal financial data
+output/
+out/
+*.csv
+*.xlsx
+!tests/fixtures/*.csv
+
+# passbooks must never be committed
+*.pdf
+!tests/fixtures/*.pdf
+
+.DS_Store
+.idea/
+.vscode/
