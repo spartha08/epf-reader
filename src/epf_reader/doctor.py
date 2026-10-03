@@ -28,7 +28,7 @@ import sys
 CORE_MODULES = [
     ("pandas", "pandas"),
     ("pdfplumber", "pdfplumber"),
-    ("PyPDF2", "PyPDF2"),
+    ("pypdf", "pypdf"),
     ("yaml", "PyYAML"),
 ]
 

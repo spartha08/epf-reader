@@ -79,6 +79,31 @@ class TestTextPDFExtraction(NoOptionalBackends):
         )
 
 
+class TestPDFAnalysis(NoOptionalBackends):
+    """Covers the pypdf-backed page count and the text/scanned verdict.
+
+    get_page_count() had no direct test, so swapping its backend (PyPDF2 is
+    end-of-life) would otherwise have been unverified by the suite.
+    """
+
+    def test_page_count(self):
+        from epf_reader.pdf_analyzer import get_page_count
+
+        for name in ("passbook_clean.pdf", "passbook_mismatch.pdf", "passbook_9col.pdf"):
+            with self.subTest(pdf=name):
+                self.assertEqual(get_page_count(str(FIXTURES / name)), 1)
+
+    def test_page_count_on_a_non_pdf_returns_zero(self):
+        from epf_reader.pdf_analyzer import get_page_count
+
+        self.assertEqual(get_page_count(str(FIXTURES / "passbook.tex")), 0)
+
+    def test_analysis_reports_pages_and_text_verdict(self):
+        res = read_epf_passbook(CLEAN)
+        self.assertEqual(res.pages, 1)
+        self.assertTrue(res.is_text_based)
+
+
 class TestBalanceExtraction(NoOptionalBackends):
     """The balance rows label themselves in the particulars column, not column 0."""
 

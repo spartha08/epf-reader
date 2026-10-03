@@ -6,7 +6,7 @@ Analyzes EPF passbook PDFs to determine type (text-based vs scanned) and extract
 """
 
 import re
-import PyPDF2
+from pypdf import PdfReader
 import pdfplumber
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -99,7 +99,7 @@ def get_page_count(pdf_path: str) -> int:
     """Get total number of pages in PDF"""
     try:
         with open(pdf_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
+            pdf_reader = PdfReader(file)
             return len(pdf_reader.pages)
     except Exception as e:
         print(f"Error getting page count: {e}")

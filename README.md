@@ -46,7 +46,7 @@ report. **Personal details are redacted by default** — see [Privacy](#privacy)
 ## Extras
 
 Core install reads any passbook with a text layer — which is most of them — and
-pulls only `pdfplumber`, `PyPDF2`, `pandas`, `python-dateutil` and `PyYAML`.
+pulls only `pdfplumber`, `pypdf`, `pandas`, `python-dateutil` and `PyYAML`.
 
 | Extra | For | Also needs |
 |---|---|---|
@@ -234,7 +234,7 @@ pip install -e ".[ui,excel]"
 python -m unittest discover -s tests -v
 ```
 
-56 tests, no Tesseract or Java required. They cover the pdfplumber path
+59 tests, no Tesseract or Java required. They cover the pdfplumber path
 end-to-end against synthetic passbooks in `tests/fixtures/` — with
 `tabula`/`camelot` forced off, so nothing passes via a backend a fresh install
 lacks — plus layout detection, balance reconciliation, PII redaction and the
