@@ -79,6 +79,25 @@ class BalanceCheck:
     def employer_diff(self) -> float:
         return abs(self.employer_calculated - self.employer_expected)
 
+    def to_dict(self) -> dict:
+        """JSON-serialisable form, for machine-readable reports."""
+        return {
+            "checked": self.checked,
+            "ok": self.ok,
+            "employee": {
+                "calculated": self.employee_calculated,
+                "expected": self.employee_expected,
+                "difference": round(self.employee_diff, 2),
+            },
+            "employer": {
+                "calculated": self.employer_calculated,
+                "expected": self.employer_expected,
+                "difference": round(self.employer_diff, 2),
+            },
+            "tolerance": self.TOLERANCE,
+            "messages": self.describe(),
+        }
+
     def describe(self) -> list[str]:
         """One line per side that does not reconcile."""
         lines = []
@@ -97,7 +116,7 @@ class BalanceCheck:
         return lines
 
 
-def _check_balances(
+def check_balances(
     transactions: list[dict], opening: dict, closing: dict
 ) -> BalanceCheck:
     """Reconcile opening + transactions against the printed closing balance."""
@@ -236,7 +255,7 @@ def read_epf_passbook(
     # verify_transactions records a mismatch only as text in the last row's
     # 'notes' cell, which is too easy to miss. Compute it as structured data so
     # callers can refuse to trust the table.
-    balance_check = _check_balances(transactions, opening, closing)
+    balance_check = check_balances(transactions, opening, closing)
 
     is_valid, errors, warnings = True, [], []
     if validate:

@@ -11,12 +11,20 @@
 Everything runs locally; the package makes no network calls.
 """
 
-from .reader import METHODS, BalanceCheck, EPFReadError, EPFResult, read_epf_passbook
+from .reader import (
+    METHODS,
+    BalanceCheck,
+    EPFReadError,
+    EPFResult,
+    check_balances,
+    read_epf_passbook,
+)
 
 __all__ = [
     "read_epf_passbook",
     "EPFResult",
     "BalanceCheck",
+    "check_balances",
     "EPFReadError",
     "METHODS",
     "__version__",

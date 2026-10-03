@@ -99,12 +99,70 @@ checked against the statement itself: if the rows in between don't account for
 the difference, rows were dropped, duplicated or misread.
 
 ```
-  Verification: Balance verification: OK
+  ✅ Balances reconcile: opening + transactions = closing
 ```
 
-That line (also the last row's `notes` column in the CSV) is the thing to read.
-`MISMATCH: …` means do not use the output. If your passbook prints no balances,
-the check reports *unchecked* — which is "unknown", not "fine".
+If your passbook prints no balances the check reports *unchecked* — which is
+"unknown", not "fine".
+
+### Detecting it programmatically
+
+Two machine-readable channels, neither of which touches the CSV.
+
+**Exit code.** The output files are always written, so a non-zero code means
+"finished, but the figures are suspect" — never "no output".
+
+| Code | Meaning |
+|---|---|
+| `0` | reconciled, or unchecked without `--strict` |
+| `1` | extraction failed |
+| `2` | bad arguments |
+| `3` | **balance mismatch** |
+| `4` | balances unchecked, and `--strict` was given |
+
+```bash
+epf-extract --input passbook.pdf --output-dir out/ || echo "suspect: $?"
+```
+
+**JSON report**, written alongside the CSVs as `<name>_report.json`
+(or wherever `--report FILE` points):
+
+```json
+{
+  "schema": "epf-reader/report/1",
+  "transactions": { "count": 12, "by_type": { "CONTRIBUTION": 11, "INTEREST": 1 } },
+  "balance_check": {
+    "checked": true,
+    "ok": false,
+    "employer": { "calculated": 15820.0, "expected": 16220.0, "difference": 400.0 },
+    "messages": ["Employer: transactions give ₹15,820.00, passbook says ₹16,220.00 (off by ₹400.00)"]
+  },
+  "ok": false
+}
+```
+
+Check the top-level `ok`, or `balance_check.ok` together with
+`balance_check.checked` to tell a pass from an unknown.
+
+The **CSV is deliberately untouched** by all of this: same columns, no trailer
+row, no embedded message — so an existing parser keeps working. The verdict
+used to sit in the last transaction's `notes` cell, which made a file-level
+result look like a property of one arbitrary row (and buried a mismatch in a
+column nobody reads). `notes` is now only for per-row notes.
+
+In Python:
+
+```python
+res = read_epf_passbook("passbook.pdf")
+if res.balance_check.checked and not res.balance_check.ok:
+    raise SystemExit("\n".join(res.balance_check.describe()))
+res.balance_check.to_dict()    # the same structure as the JSON report
+```
+
+Note `validation.passed` in the report is separate: the validator checks
+row-level rules, `balance_check` checks whether the extraction is complete. A
+run can pass validation and still fail reconciliation — the top-level `ok`
+accounts for both.
 
 ## Usage
 
@@ -115,6 +173,8 @@ epf-extract --input passbook.pdf --output-dir out/
 
   --method {auto,pdfplumber,tabula,camelot,ocr}   default: auto
   --output NAME        base name for output files (default: epf_transactions)
+  --report FILE        where to write the JSON report
+  --strict             also exit non-zero when balances cannot be checked
   --no-redact-pii      keep UAN, PF account number, member name in the output
   --excel              also write .xlsx
   --debug              dump the raw extracted tables
@@ -258,7 +318,7 @@ pip install -e ".[ui,excel]"
 python -m unittest discover -s tests -v
 ```
 
-69 tests, no Tesseract or Java required. They cover the pdfplumber path
+87 tests, no Tesseract or Java required. They cover the pdfplumber path
 end-to-end against synthetic passbooks in `tests/fixtures/` — with
 `tabula`/`camelot` forced off, so nothing passes via a backend a fresh install
 lacks — plus layout detection, balance reconciliation, PII redaction and the
@@ -273,7 +333,8 @@ Streamlit page (via Streamlit's `AppTest`; skipped if Streamlit is absent).
 | "No tables extracted" | Run `epf-inspect`. `SCANNED` → `--method ocr`. `TEXT` with `0/0` rows → unsupported layout. |
 | `WARNING: Unexpected column count: N` | Layout not mapped. Open an issue with the two `DEBUG` lines (they contain no personal details). |
 | Contributions equal your monthly salary | The wage columns were read as contributions — wrong 9-column variant. Check `9-column layout detected as '…'`. |
-| `MISMATCH` in the balance line | Rows dropped or misparsed. Try another `--method`; don't use the output as-is. |
+| Exit code 3 / `"ok": false` | Balance mismatch — rows dropped or misparsed. Try another `--method`; don't use the output as-is. |
+| Exit code 4 | Only with `--strict`: the passbook prints no balances, so completeness can't be verified. |
 | `java: command not found` | Harmless — a text PDF falls back to pdfplumber. |
 | "externally-managed-environment" on pip | Install into a venv, or use `pipx install epf-reader`. |
 | UI can't import the reader | The package is in a different environment than Streamlit. Install it into the one running Streamlit. |

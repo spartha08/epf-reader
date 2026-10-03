@@ -169,9 +169,9 @@ class TestBalanceReconciliation(NoOptionalBackends):
         self.assertLess(check.employee_diff, 0.01)
 
     def test_unchecked_when_no_balances_printed(self):
-        from epf_reader.reader import _check_balances
+        from epf_reader import check_balances
 
-        check = _check_balances([{"employee_contribution": 1.0,
+        check = check_balances([{"employee_contribution": 1.0,
                                   "employer_contribution": 1.0}], {}, {})
         self.assertFalse(check.checked)
         # "unknown" must not be reported as a pass

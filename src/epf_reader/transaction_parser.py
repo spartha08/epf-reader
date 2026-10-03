@@ -376,49 +376,17 @@ def classify_transaction(particulars: str) -> str:
 
 
 def verify_transactions(transactions: List[Dict], opening_balance: Dict, closing_balance: Dict) -> List[Dict]:
+    """Deprecated no-op, kept so existing callers keep working.
+
+    This used to write the balance-chain verdict into the *last transaction's*
+    ``notes`` cell. That made a file-level result look like a property of one
+    arbitrary row — and buried a MISMATCH, the single most important thing the
+    tool can report, in a column nobody reads.
+
+    The verdict is now structured data: ``epf_reader.check_balances()`` returns
+    a ``BalanceCheck``, the CLI writes it to a JSON report and signals it
+    through its exit code, and ``notes`` is left for genuine per-row notes.
     """
-    Verify transactions against opening and closing balances
-    
-    Args:
-        transactions: List of transaction dicts
-        opening_balance: Dict with 'employee' and 'employer' opening balances
-        closing_balance: Dict with 'employee' and 'employer' closing balances
-        
-    Returns:
-        Updated transactions with verification notes
-    """
-    if not transactions:
-        return transactions
-    
-    # Calculate total contributions from opening balance
-    # Include ALL transactions including INTEREST as they represent actual credited amounts
-    total_employee = Decimal(str(opening_balance.get('employee', 0)))
-    total_employer = Decimal(str(opening_balance.get('employer', 0)))
-    
-    for txn in transactions:
-        total_employee += Decimal(str(txn['employee_contribution']))
-        total_employer += Decimal(str(txn['employer_contribution']))
-    
-    # Compare with closing balance
-    expected_employee = closing_balance.get('employee', 0)
-    expected_employer = closing_balance.get('employer', 0)
-    
-    employee_diff = abs(float(total_employee) - expected_employee)
-    employer_diff = abs(float(total_employer) - expected_employer)
-    
-    # Add verification note to last transaction
-    if transactions and (opening_balance.get('employee', 0) > 0 or opening_balance.get('employer', 0) > 0):
-        notes = []
-        if employee_diff > 0.01:
-            notes.append(f"Employee: calculated ₹{float(total_employee):,.2f}, expected ₹{expected_employee:,.2f}, diff ₹{employee_diff:,.2f}")
-        if employer_diff > 0.01:
-            notes.append(f"Employer: calculated ₹{float(total_employer):,.2f}, expected ₹{expected_employer:,.2f}, diff ₹{employer_diff:,.2f}")
-        
-        if notes:
-            transactions[-1]['notes'] = 'MISMATCH: ' + '; '.join(notes)
-        else:
-            transactions[-1]['notes'] = 'Balance verification: OK'
-    
     return transactions
 
 

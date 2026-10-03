@@ -137,7 +137,8 @@ def export_to_csv(
     header_info: Dict,
     output_dir: str,
     base_filename: str = "epf_transactions",
-    redact_pii_flag: bool = False
+    redact_pii_flag: bool = False,
+    balance_check=None
 ) -> Dict[str, str]:
     """
     Export transactions and metadata to CSV files
@@ -172,9 +173,9 @@ def export_to_csv(
     export_metadata_csv(header_info, metadata_file)
     
     # Generate summary report
-    summary = generate_summary_report(transactions, header_info)
+    summary = generate_summary_report(transactions, header_info, balance_check)
     with open(summary_file, 'w', encoding='utf-8') as f:
-        f.write(summary)
+        f.write(summary if summary.endswith('\n') else summary + '\n')
     
     return {
         'transactions': str(transactions_file),
@@ -282,13 +283,17 @@ def export_metadata_csv(header_info: Dict, output_file: Path):
     print(f"✅ Metadata exported: {output_file}")
 
 
-def generate_summary_report(transactions: List[Dict], header_info: Dict) -> str:
+def generate_summary_report(transactions: List[Dict], header_info: Dict,
+                            balance_check=None) -> str:
     """
     Generate summary report text
     
     Args:
         transactions: List of transactions
         header_info: Header information
+        balance_check: Optional BalanceCheck — whether opening + transactions
+            equals the printed closing balance. A file-level verdict belongs
+            here, not in one transaction's notes cell.
         
     Returns:
         Formatted summary report string
@@ -383,8 +388,24 @@ def generate_summary_report(transactions: List[Dict], header_info: Dict) -> str:
     report.append(f"Report Generated: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
     report.append("=" * 80)
     
-    return "\n".join(report)
 
+    # Balance verification — the file-level integrity verdict.
+    if balance_check is not None:
+        report.append("")
+        report.append("BALANCE VERIFICATION:")
+        report.append("-" * 80)
+        if not balance_check.checked:
+            report.append("UNCHECKED - this passbook prints no opening/closing balances,")
+            report.append("so the extraction could not be verified against the statement.")
+        elif balance_check.ok:
+            report.append("OK - opening balance + all transactions = printed closing balance.")
+        else:
+            report.append("MISMATCH - the transactions do not account for the change in")
+            report.append("balance. Rows were dropped, duplicated or misread.")
+            for line in balance_check.describe():
+                report.append(f"  {line}")
+
+    return "\n".join(report)
 
 def export_debug_data(raw_tables: List[pd.DataFrame], output_dir: str, prefix: str = "debug"):
     """

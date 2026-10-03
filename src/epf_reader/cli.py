@@ -6,6 +6,7 @@ EPF Passbook OCR Extractor
 Main CLI interface for extracting EPF transaction data from PDF to CSV
 """
 
+import json
 import sys
 import argparse
 from pathlib import Path
@@ -13,9 +14,19 @@ from datetime import datetime
 
 from .pdf_analyzer import analyze_pdf
 from .table_extractor import extract_tables, clean_extracted_tables, merge_multi_page_tables
-from .transaction_parser import parse_transactions, verify_transactions
+from .reader import check_balances
+from .transaction_parser import parse_transactions
 from .validator import validate_transactions, generate_validation_report
 from .csv_exporter import export_to_csv, export_debug_data
+
+
+# Exit codes. A balance mismatch gets its own code so a caller can tell
+# "extraction finished but the figures do not reconcile" apart from "the tool
+# failed" — the output files are written in both cases.
+EXIT_OK = 0
+EXIT_ERROR = 1
+EXIT_BALANCE_MISMATCH = 3
+EXIT_BALANCE_UNCHECKED = 4
 
 
 def main():
@@ -92,6 +103,20 @@ Extraction Methods:
     )
     
     parser.add_argument(
+        '--report',
+        metavar='FILE',
+        help='Write the machine-readable JSON report here (default: '
+             '<output-dir>/<output>_report.json)'
+    )
+    
+    parser.add_argument(
+        '--strict',
+        action='store_true',
+        help='Also exit non-zero (4) when the passbook prints no opening/closing '
+             'balances, so the extraction could not be checked against itself'
+    )
+    
+    parser.add_argument(
         '--no-redact-pii',
         action='store_true',
         help='Do NOT redact personally identifiable information (UAN, DOB, names, addresses, email, phone). By default, PII is redacted.'
@@ -101,7 +126,7 @@ Extraction Methods:
     
     # Run extraction pipeline
     try:
-        process_epf_passbook(
+        sys.exit(process_epf_passbook(
             pdf_path=args.input,
             output_dir=args.output_dir,
             output_name=args.output,
@@ -109,17 +134,19 @@ Extraction Methods:
             debug=args.debug,
             validate=not args.no_validate,
             excel=args.excel,
-            redact_pii=not args.no_redact_pii
-        )
+            redact_pii=not args.no_redact_pii,
+            report_path=args.report,
+            strict=args.strict
+        ))
     except KeyboardInterrupt:
         print("\n\n⚠️  Process interrupted by user")
-        sys.exit(1)
+        sys.exit(EXIT_ERROR)
     except Exception as e:
         print(f"\n❌ Error: {e}")
         if args.debug:
             import traceback
             traceback.print_exc()
-        sys.exit(1)
+        sys.exit(EXIT_ERROR)
 
 
 def process_epf_passbook(
@@ -130,8 +157,11 @@ def process_epf_passbook(
     debug: bool = False,
     validate: bool = True,
     excel: bool = False,
-    redact_pii: bool = True
-):
+    redact_pii: bool = True,
+    report_path: str = None,
+    strict: bool = False
+) -> int:
+    """Returns the process exit code; see EXIT_* above."""
     """
     Complete EPF passbook extraction pipeline
     
@@ -259,13 +289,23 @@ def process_epf_passbook(
     print(f"    Employer: ₹{closing.get('employer', 0):,.2f}")
     print(f"    Total:    ₹{closing.get('employee', 0) + closing.get('employer', 0):,.2f}")
     
-    transactions = verify_transactions(transactions, opening, closing)
+    balance = check_balances(transactions, opening, closing)
     
-    if transactions and transactions[-1].get('notes'):
-        print(f"\n  Verification: {transactions[-1]['notes']}")
+    print()
+    if not balance.checked:
+        print("  ⚠️  This passbook prints no opening/closing balances, so the")
+        print("      extraction could not be checked against the statement itself.")
+    elif balance.ok:
+        print("  ✅ Balances reconcile: opening + transactions = closing")
+    else:
+        print("  ❌ BALANCE MISMATCH — do not use this output:")
+        for line in balance.describe():
+            print(f"       {line}")
+        print("      Rows were dropped, duplicated or misread.")
     print()
     
     # Step 6: Validate (optional)
+    is_valid, errors, warnings = True, [], []
     if validate:
         print("Step 6: Validating data...")
         print("-" * 80)
@@ -314,7 +354,8 @@ def process_epf_passbook(
         analysis['header'],
         output_dir,
         output_name,
-        redact_pii_flag=redact_pii
+        redact_pii_flag=redact_pii,
+        balance_check=balance
     )
     
     print()
@@ -338,9 +379,52 @@ def process_epf_passbook(
             print(f"  ⚠️  Excel export failed: {e}")
             print()
     
+    # Machine-readable report. Written as a sidecar file so the CSV schema is
+    # untouched — a caller parsing the CSV sees no new rows, columns or
+    # trailers, and reads integrity from here or from the exit code.
+    report = {
+        'schema': 'epf-reader/report/1',
+        'input': str(pdf_path),
+        'extraction': {
+            'method': analysis.get('method'),
+            'method_requested': method,
+            'pages': analysis.get('pages'),
+            'is_text_based': bool(analysis.get('is_text_based', True)),
+        },
+        'transactions': {
+            'count': len(transactions),
+            'by_type': type_counts,
+            'date_first': transactions[0]['date'] if transactions else None,
+            'date_last': transactions[-1]['date'] if transactions else None,
+        },
+        'opening_balance': opening,
+        'closing_balance': closing,
+        'balance_check': balance.to_dict(),
+        'validation': {
+            'ran': bool(validate),
+            'passed': bool(is_valid) if validate else None,
+            'errors': list(errors) if validate else [],
+            'warnings': list(warnings) if validate else [],
+        },
+        'files': output_files,
+        'ok': bool(balance.ok and (balance.checked or not strict)),
+    }
+
+    report_file = Path(report_path) if report_path else Path(output_dir) / f"{output_name}_report.json"
+    report_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(report_file, 'w', encoding='utf-8') as fh:
+        json.dump(report, fh, indent=2, default=str)
+    print(f"  Report (JSON): {report_file}")
+    print()
+
     # Summary
     print("=" * 80)
-    print("✅ EXTRACTION COMPLETE")
+    if not balance.checked and strict:
+        print("⚠️  EXTRACTION COMPLETE — BALANCES UNCHECKED (--strict)")
+    elif balance.ok:
+        print("✅ EXTRACTION COMPLETE")
+    else:
+        print("❌ EXTRACTION COMPLETE — BALANCE MISMATCH")
     print("=" * 80)
     print()
     print(f"Total transactions: {len(transactions)}")
@@ -354,6 +438,13 @@ def process_epf_passbook(
     if validate:
         print(f"  3. Review validation report: {Path(output_dir) / f'{output_name}_validation.txt'}")
     print()
+
+    # The caller's programmatic signal. The output files are already written, so
+    # a non-zero code here means "finished, but the figures do not reconcile" —
+    # never "no output".
+    if not balance.checked:
+        return EXIT_BALANCE_UNCHECKED if strict else EXIT_OK
+    return EXIT_OK if balance.ok else EXIT_BALANCE_MISMATCH
 
 
 if __name__ == "__main__":
