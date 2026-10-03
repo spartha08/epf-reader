@@ -196,6 +196,30 @@ If your passbook fails, the two lines that identify the layout are:
 epf-extract --input passbook.pdf --output-dir out/ 2>&1 | grep DEBUG
 ```
 
+## Withdrawals and direction
+
+A passbook with a **CR/DR column** prints its amounts unsigned and carries the
+direction there. Those layouts (both 9-column variants) are read with the sign
+applied: a `DR` row — a withdrawal, a transfer out, TDS — comes back negative,
+and the passbook's own marker is preserved in a `direction` column in the CSV
+so a negative figure can be traced to the row that declared it a debit.
+
+Signing uses `-abs()`, so a layout that already prints negatives is not flipped
+back to positive.
+
+Layouts **without** a CR/DR column (5, 6 and 12-column) carry no direction to
+read, so their amounts are taken as printed. If a row there classifies as an
+outflow while its amounts are positive, the extraction says so rather than
+guessing a sign:
+
+```
+WARNING: row 7 classified WITHDRAWAL but this layout has no CR/DR column,
+so its amounts are taken as printed.
+```
+
+Either way the balance reconciliation is the check that matters: if the signs
+are wrong, opening + transactions will not equal the printed closing balance.
+
 ## Extraction backends
 
 | Backend | Needs | When |
@@ -234,7 +258,7 @@ pip install -e ".[ui,excel]"
 python -m unittest discover -s tests -v
 ```
 
-59 tests, no Tesseract or Java required. They cover the pdfplumber path
+69 tests, no Tesseract or Java required. They cover the pdfplumber path
 end-to-end against synthetic passbooks in `tests/fixtures/` — with
 `tabula`/`camelot` forced off, so nothing passes via a backend a fresh install
 lacks — plus layout detection, balance reconciliation, PII redaction and the

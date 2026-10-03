@@ -102,6 +102,70 @@ class TestSplitLayoutParsing(unittest.TestCase):
         self.assertIn("WITHDRAWAL", kinds)
 
 
+class TestDirection(unittest.TestCase):
+    """A DR row is money leaving the account.
+
+    The passbook prints the figures unsigned and carries the direction in its
+    CR/DR column. That column used to be dropped by the 9-column mapping, so a
+    withdrawal was read as a positive amount and *added* to the balance.
+    """
+
+    def test_debit_amounts_are_signed_negative(self):
+        txns, _ = _parse([HEADER, DEBIT_ROW])
+        self.assertEqual(len(txns), 1)
+        self.assertEqual(txns[0]["direction"], "DR")
+        self.assertAlmostEqual(txns[0]["employee_contribution"], -2000.0, places=2)
+        self.assertAlmostEqual(txns[0]["employer_contribution"], -1500.0, places=2)
+
+    def test_credit_amounts_are_left_positive(self):
+        txns, _ = _parse([HEADER, SPLIT_ROW])
+        self.assertEqual(txns[0]["direction"], "CR")
+        self.assertAlmostEqual(txns[0]["employee_contribution"], 2400.0, places=2)
+
+    def test_already_negative_amounts_are_not_flipped_back(self):
+        """Signing uses -abs(), so a layout that prints negatives stays negative."""
+        row = ["", "15-06-2016", "DR", "PF Withdrawal", "", "", "-2,000", "-1,500", "0"]
+        txns, _ = _parse([HEADER, row])
+        self.assertAlmostEqual(txns[0]["employee_contribution"], -2000.0, places=2)
+        self.assertAlmostEqual(txns[0]["employer_contribution"], -1500.0, places=2)
+
+    def test_direction_is_carried_in_the_combined_variant_too(self):
+        combined_debit = ["", "Jun-2016 15-06-2016", "DR", "PF Withdrawal",
+                          "", "", "2,000", "1,500", "0"]
+        txns, _ = _parse([HEADER, COMBINED_ROW, combined_debit])
+        debit = [t for t in txns if t["transaction_type"] == "WITHDRAWAL"]
+        self.assertEqual(len(debit), 1)
+        self.assertAlmostEqual(debit[0]["employee_contribution"], -2000.0, places=2)
+
+    def test_layout_without_a_direction_column_keeps_amounts_as_printed(self):
+        """A 6-column layout has no CR/DR column; the sign cannot be inferred
+        from it, so the amount is left alone rather than guessed at."""
+        from epf_reader.transaction_parser import parse_transactions as _pt
+        import pandas as _pd
+
+        df = _pd.DataFrame(
+            [["15/06/2016", "PF Withdrawal", 2000.0, 1500.0]],
+            columns=["date", "particulars", "employee", "employer"],
+        )
+        txn = _pt(df)[0]
+        self.assertAlmostEqual(txn["employee_contribution"], 2000.0, places=2)
+
+    def test_direction_reaches_the_csv(self):
+        import csv as _csv
+        import tempfile
+        from pathlib import Path as _Path
+
+        from epf_reader.csv_exporter import export_transactions_csv
+
+        txns, _ = _parse([HEADER, SPLIT_ROW, DEBIT_ROW])
+        with tempfile.TemporaryDirectory() as tmp:
+            out = _Path(tmp) / "t.csv"
+            export_transactions_csv(txns, out)
+            rows = list(_csv.DictReader(out.open()))
+        self.assertIn("direction", rows[0])
+        self.assertEqual({r["direction"] for r in rows}, {"CR", "DR"})
+
+
 class TestInterestRowSurvives(unittest.TestCase):
     """Regression: the header filter matched 'DATE' as a substring, so
     "Int. UpDATEd upto ..." was deleted — losing the annual interest credit."""

@@ -195,11 +195,13 @@ def export_transactions_csv(transactions: List[Dict], output_file: Path):
         print("Warning: No transactions to export")
         return
     
-    # Define column order (7 columns)
+    # Column order. 'direction' carries the passbook's own CR/DR marker, so a
+    # negative amount can be traced back to the row that declared it a debit.
     columns = [
         'date',
         'particulars',
         'transaction_type',
+        'direction',
         'employee_contribution',
         'employer_contribution',
         'total_contribution',

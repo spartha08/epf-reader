@@ -26,6 +26,7 @@ from epf_reader import read_epf_passbook  # noqa: E402
 
 CLEAN = FIXTURES / "passbook_clean.pdf"
 MISMATCH = FIXTURES / "passbook_mismatch.pdf"
+WITHDRAWAL = FIXTURES / "passbook_withdrawal.pdf"
 
 
 class NoOptionalBackends(unittest.TestCase):
@@ -175,6 +176,47 @@ class TestBalanceReconciliation(NoOptionalBackends):
         self.assertFalse(check.checked)
         # "unknown" must not be reported as a pass
         self.assertEqual(check.describe(), [])
+
+
+class TestWithdrawalDirectionEndToEnd(NoOptionalBackends):
+    """A real PDF carrying a DR withdrawal, proven by its own printed balances.
+
+    The fixture's closing balance only follows from the rows if the withdrawal
+    is subtracted: 50,000 + 2,400 + 2,400 - 10,000 = 44,800. Taking the DR row
+    as printed gives 64,800, so the reconciliation is independent evidence that
+    the sign is applied, not merely an assertion restating the code.
+    """
+
+    def test_withdrawal_is_negative(self):
+        res = read_epf_passbook(WITHDRAWAL)
+        debits = res.transactions[res.transactions["direction"] == "DR"]
+        self.assertEqual(len(debits), 1)
+        self.assertAlmostEqual(debits.iloc[0]["employee_contribution"], -10000.0, places=2)
+        self.assertAlmostEqual(debits.iloc[0]["employer_contribution"], -8000.0, places=2)
+
+    def test_balances_reconcile_only_with_the_sign_applied(self):
+        res = read_epf_passbook(WITHDRAWAL)
+        check = res.balance_check
+        self.assertTrue(check.checked, "the fixture prints opening and closing balances")
+        self.assertTrue(check.ok, f"did not reconcile: {check.describe()}")
+        self.assertAlmostEqual(check.employee_calculated, 44800.0, places=2)
+        self.assertAlmostEqual(check.employer_calculated, 34300.0, places=2)
+
+    def test_unsigned_reading_would_not_reconcile(self):
+        """Guards the regression directly: had the sign been dropped, the
+        employee side would land on 64,800 against a printed 44,800."""
+        res = read_epf_passbook(WITHDRAWAL)
+        unsigned = res.opening_balance["employee"] + sum(
+            abs(v) for v in res.transactions["employee_contribution"]
+        )
+        self.assertAlmostEqual(unsigned, 64800.0, places=2)
+        self.assertNotAlmostEqual(unsigned, res.closing_balance["employee"], places=2)
+
+    def test_contributions_stay_positive(self):
+        res = read_epf_passbook(WITHDRAWAL)
+        credits = res.transactions[res.transactions["direction"] == "CR"]
+        self.assertEqual(len(credits), 2)
+        self.assertTrue((credits["employee_contribution"] > 0).all())
 
 
 class TestRedactionCoversEveryPIIField(NoOptionalBackends):

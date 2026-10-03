@@ -56,6 +56,16 @@ def parse_transactions(df: pd.DataFrame) -> List[Dict]:
     return transactions
 
 
+# Classifications that take money out of the account. Used only to warn when a
+# layout carries no CR/DR column to confirm the sign.
+_OUTFLOW_TYPES = frozenset({
+    'WITHDRAWAL',
+    'FINAL_SETTLEMENT',
+    'TRANSFER_OUT',
+    'TDS',
+})
+
+
 def parse_transaction_row(row: pd.Series, row_num: int) -> Optional[Dict]:
     """
     Parse a single transaction row
@@ -89,17 +99,36 @@ def parse_transaction_row(row: pd.Series, row_num: int) -> Optional[Dict]:
     # Parse amounts (ignore pension and total)
     employee_contrib = parse_indian_amount(row.get('employee', 0))
     employer_contrib = parse_indian_amount(row.get('employer', 0))
-    
-    # Build transaction dictionary - only 6 columns
+
+    # Apply direction. A passbook that has a CR/DR column prints the figures
+    # unsigned and carries the direction there, so a withdrawal read as printed
+    # would *add* to the balance. Signing uses -abs(), which is idempotent: a
+    # layout that already prints negatives is not flipped back to positive.
+    direction = str(row.get('direction', '') or '').strip().upper()
+    if direction == 'DR':
+        employee_contrib = -abs(employee_contrib)
+        employer_contrib = -abs(employer_contrib)
+
     transaction = {
         'date': parsed_date,
         'particulars': particulars,
         'transaction_type': transaction_type,
+        'direction': direction or ('DR' if min(employee_contrib, employer_contrib) < 0 else 'CR'),
         'employee_contribution': employee_contrib,
         'employer_contribution': employer_contrib,
         'notes': ''
     }
-    
+
+    # Without a direction column the sign cannot be established from the layout,
+    # so a withdrawal-looking row with positive amounts is reported rather than
+    # silently guessed at.
+    if not direction and transaction_type in _OUTFLOW_TYPES and employee_contrib + employer_contrib > 0:
+        print(
+            f"WARNING: row {row_num} classified {transaction_type} but this layout has no "
+            "CR/DR column, so its amounts are taken as printed. Check the balance "
+            "reconciliation before using the output."
+        )
+
     return transaction
 
 

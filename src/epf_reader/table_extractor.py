@@ -652,15 +652,19 @@ def clean_extracted_tables(dfs: List[pd.DataFrame]) -> Tuple[List[pd.DataFrame],
             variant = _detect_9col_variant(df)
             print(f"DEBUG: 9-column layout detected as '{variant}'")
 
+            # The CR/DR column is named 'direction' rather than
+            # 'transaction_type': the parser's transaction_type holds the
+            # classification (CONTRIBUTION / WITHDRAWAL / INTEREST), and
+            # conflating the two is what previously let direction be dropped.
             if variant == 'split':
                 # Wage Month | Date | CR/DR | Particulars | EPF Wages |
                 # EPS Wages | Employee | Employer | Pension
-                df.columns = ['wage_month', 'date', 'transaction_type', 'particulars',
+                df.columns = ['wage_month', 'date', 'direction', 'particulars',
                               'epf_wages', 'eps_wages', 'employee', 'employer', 'pension']
             else:
                 # Empty | WageMonth+Date | CR/DR | Particulars | Wages | Total |
                 # Employee | Employer | Pension
-                df.columns = ['empty', 'wage_month_date', 'transaction_type', 'particulars',
+                df.columns = ['empty', 'wage_month_date', 'direction', 'particulars',
                               'wages', 'total', 'employee', 'employer', 'pension']
                 df = df.drop('empty', axis=1)
 
@@ -671,19 +675,13 @@ def clean_extracted_tables(dfs: List[pd.DataFrame]) -> Tuple[List[pd.DataFrame],
                 df['date'] = split_data[1]
                 df = df.drop('wage_month_date', axis=1)
 
-            # A DR row is money leaving the account. The downstream parser reads
-            # the amounts as printed, so direction would be lost — say so rather
-            # than guessing a sign the passbook may already carry.
-            if 'transaction_type' in df.columns:
-                debits = df['transaction_type'].astype(str).str.strip().str.upper().eq('DR')
-                if debits.any():
-                    print(
-                        f"WARNING: {int(debits.sum())} debit (DR) row(s) present. Amounts are "
-                        "taken as printed; verify the balance reconciliation before importing."
-                    )
+            debits = int(df['direction'].astype(str).str.strip().str.upper().eq('DR').sum())
+            if debits:
+                print(f"DEBUG: {debits} debit (DR) row(s) — amounts will be signed negative")
 
-            # Keep only what the parser consumes.
-            df = df[['date', 'particulars', 'employee', 'employer']]
+            # Keep what the parser consumes, direction included: a DR row is
+            # money leaving the account, and dropping the column lost that.
+            df = df[['date', 'particulars', 'employee', 'employer', 'direction']]
         elif num_cols == 6:
             # Simple format: Date, Particulars, Employee, Employer, Pension, Total (contributions only)
             df.columns = ['date', 'particulars', 'employee', 'employer', 'pension', 'total']
